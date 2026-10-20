@@ -1,0 +1,64 @@
+name: Deploy SoundCraft PWA to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-pwa.yml"
+      - "apps/soundcraft-web/**"
+      - "crates/**"
+      - "pwa/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/**"
+      - "packaging/web/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: soundcraft-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build SoundCraft WASM and installable PWA
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: soundcraft-web-pwa
+      - name: Install Trunk 0.21.14
+        run: |
+          curl -fsSL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C "$HOME/.cargo/bin" trunk
+          trunk --version
+      - name: Build SoundCraft for browsers
+        working-directory: apps/soundcraft-web
+        run: trunk build --release --locked
+      - name: Verify compiled browser assets
+        run: test -f dist/web/index.html && find dist/web -name "*.wasm" -print -quit | grep -q wasm
+      - name: Prepare offline-capable PWA
+        run: python3 pwa/prepare_site.py dist/web
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+
+  deploy:
+    name: Publish SoundCraft PWA
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
