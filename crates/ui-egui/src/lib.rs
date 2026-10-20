@@ -1287,7 +1287,7 @@ impl SoundApp {
         let key = egui::Id::new("soundcraft-phone-tab");
         let mut tab = ui.ctx().data(|d| d.get_temp::<u8>(key)).unwrap_or(0);
         let t = theme::Tokens::current();
-        egui::TopBottomPanel::top("soundcraft-phone-actions")
+        egui::Panel::top("soundcraft-phone-actions")
             .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin::symmetric(6, 5)))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -1314,7 +1314,7 @@ impl SoundApp {
                     ui.label(format!("{} tracks", self.engine.session().tracks.len()));
                 });
             });
-        egui::TopBottomPanel::bottom("soundcraft-phone-tabs")
+        egui::Panel::bottom("soundcraft-phone-tabs")
             .frame(egui::Frame::NONE.fill(t.panel_bg2).inner_margin(egui::Margin::symmetric(4, 7)))
             .show(ui, |ui| {
                 egui::ScrollArea::horizontal().id_salt("phone-sound-tabs").show(ui, |ui| {
@@ -1329,10 +1329,14 @@ impl SoundApp {
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.window_bg)).show(ui, |ui| {
             match tab {
                 1 => crate::mix_window::content(self, ui),
-                2 => egui::ScrollArea::vertical().id_salt("phone-tracks")
-                    .auto_shrink([false, false]).show(ui, |ui| crate::panels::tracks_and_groups(self, ui)),
-                3 => egui::ScrollArea::vertical().id_salt("phone-clips")
-                    .auto_shrink([false, false]).show(ui, |ui| crate::panels::clip_list(self, ui)),
+                2 => {
+                    egui::ScrollArea::vertical().id_salt("phone-tracks")
+                        .auto_shrink([false, false]).show(ui, |ui| crate::panels::tracks_and_groups(self, ui));
+                }
+                3 => {
+                    egui::ScrollArea::vertical().id_salt("phone-clips")
+                        .auto_shrink([false, false]).show(ui, |ui| crate::panels::clip_list(self, ui));
+                }
                 _ => crate::edit_window::main_area(self, ui),
             }
         });
