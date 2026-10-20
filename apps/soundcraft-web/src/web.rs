@@ -38,7 +38,9 @@ pub fn start() {
                     if let Some(rs) = &cc.wgpu_render_state {
                         log::info!("soundcraft-web: wgpu backend {:?}", rs.adapter.get_info().backend);
                     }
-                    let engine = if query().contains("empty") { Engine::default() } else { soundcraft_engine::demo::demo_engine() };
+                    let q = query();
+                    let narrow = cc.egui_ctx.content_rect().width() < 760.0;
+                    let engine = if q.contains("empty") || (narrow && !q.contains("demo")) { Engine::default() } else { soundcraft_engine::demo::demo_engine() };
                     let player = soundcraft_playback::Player::new(Arc::new(engine.session().clone()));
                     let app = SoundApp::new(engine, Some(player), Services::default());
                     Ok(Box::new(WebShell { app, inbox: Rc::default(), samples: Rc::default() }))
