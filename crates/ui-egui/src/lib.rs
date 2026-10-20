@@ -1243,18 +1243,25 @@ impl SoundApp {
         }
         shortcuts::handle(self, &ctx);
         self.sample_drop_targets.clear();
-        if !self.native_menu_bar {
-            menus::menu_bar(self, ui);
+        // Native dock splits and the full edit toolbar assume a desktop-size viewport.
+        // Use a separate, nonpersistent phone layout without touching the user's dock settings.
+        let phone = cfg!(target_arch = "wasm32") && ctx.content_rect().width() < 760.0;
+        if phone {
+            self.phone_ui(ui);
+        } else {
+            if !self.native_menu_bar {
+                menus::menu_bar(self, ui);
+            }
+            // With the Mix window in its own native window, the main window keeps Edit.
+            match if self.ui.mix_separate { MainWindow::Edit } else { self.ui.window } {
+                MainWindow::Edit => edit_window::show(self, ui),
+                MainWindow::Mix => mix_window::show(self, ui),
+            }
+            if self.ui.mix_separate {
+                mix_window::show_separate(self, &ctx);
+            }
+            panels::floating(self, &ctx);
         }
-        // With the Mix window in its own native window, the main window keeps Edit.
-        match if self.ui.mix_separate { MainWindow::Edit } else { self.ui.window } {
-            MainWindow::Edit => edit_window::show(self, ui),
-            MainWindow::Mix => mix_window::show(self, ui),
-        }
-        if self.ui.mix_separate {
-            mix_window::show_separate(self, &ctx);
-        }
-        panels::floating(self, &ctx);
         windows::show(self, &ctx);
         video_window::show(self, &ctx);
         ops_windows::show(self, &ctx);
@@ -1272,6 +1279,63 @@ impl SoundApp {
         } else if !self.pending_shots.is_empty() || !self.synthetic.is_empty() {
             ctx.request_repaint();
         }
+    }
+
+    /// Browser phone layout: preserve the original Edit/Mix dock trees for desktop.
+    /// Keep controls in two compact rows, and show one useful editor pane at a time.
+    fn phone_ui(&mut self, ui: &mut egui::Ui) {
+        let key = egui::Id::new("soundcraft-phone-tab");
+        let mut tab = ui.ctx().data(|d| d.get_temp::<u8>(key)).unwrap_or(0);
+        let t = theme::Tokens::current();
+        egui::TopBottomPanel::top("soundcraft-phone-actions")
+            .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin::symmetric(6, 5)))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("New").clicked() {
+                        self.dialogs.open_for_command(&self.engine, "session.new");
+                    }
+                    if ui.button("Open").clicked() {
+                        self.dialogs.open_for_command(&self.engine, "session.open");
+                    }
+                    if ui.button("Save").clicked() { let _ = self.run("session.save", json!({})); }
+                    if ui.button("Audio").clicked() {
+                        self.dialogs.open_for_command(&self.engine, "file.import_audio");
+                    }
+                    if ui.button("+ Track").clicked() {
+                        self.dialogs.open_for_command(&self.engine, "track.new");
+                    }
+                });
+                ui.horizontal(|ui| {
+                    if ui.button(if self.is_playing() { "Pause" } else { "Play" }).clicked() {
+                        let _ = self.run(if self.is_playing() { "transport.stop" } else { "transport.play" }, json!({}));
+                    }
+                    if ui.button("Stop").clicked() { let _ = self.run("transport.stop", json!({})); }
+                    if ui.button("Undo").clicked() { let _ = self.run("edit.undo", json!({})); }
+                    ui.label(format!("{} tracks", self.engine.session().tracks.len()));
+                });
+            });
+        egui::TopBottomPanel::bottom("soundcraft-phone-tabs")
+            .frame(egui::Frame::NONE.fill(t.panel_bg2).inner_margin(egui::Margin::symmetric(4, 7)))
+            .show(ui, |ui| {
+                egui::ScrollArea::horizontal().id_salt("phone-sound-tabs").show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        for (n, title) in [(0, "Edit"), (1, "Mix"), (2, "Tracks"), (3, "Clips")] {
+                            if ui.selectable_label(tab == n, title).clicked() { tab = n; }
+                        }
+                    });
+                });
+            });
+        ui.ctx().data_mut(|d| d.insert_temp(key, tab));
+        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.window_bg)).show(ui, |ui| {
+            match tab {
+                1 => crate::mix_window::content(self, ui),
+                2 => egui::ScrollArea::vertical().id_salt("phone-tracks")
+                    .auto_shrink([false, false]).show(ui, |ui| crate::panels::tracks_and_groups(self, ui)),
+                3 => egui::ScrollArea::vertical().id_salt("phone-clips")
+                    .auto_shrink([false, false]).show(ui, |ui| crate::panels::clip_list(self, ui)),
+                _ => crate::edit_window::main_area(self, ui),
+            }
+        });
     }
 
     /// UI state as JSON (control channel `ui.inspect`).
